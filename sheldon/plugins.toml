@@ -1,0 +1,12 @@
+shell = "zsh"
+
+[plugins.fzf]
+github = "junegunn/fzf"
+apply = ["fzf-bin", "source"]
+use = ["shell/completion.zsh", "shell/key-bindings.zsh"]
+
+[templates]
+fzf-bin = 'export PATH="{{ dir }}/bin:$PATH"'
+
+[plugins.forgit]
+github = "wfxr/forgit"

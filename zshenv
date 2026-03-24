@@ -20,3 +20,6 @@ setopt HIST_IGNORE_ALL_DUPS   # Remove older duplicates from history
 
 # Add Editor
 export EDITOR=vim
+
+# Sheldon config directory (plugins.toml lives in version-controlled .shellconfig)
+export SHELDON_CONFIG_DIR=~/.shellconfig/sheldon

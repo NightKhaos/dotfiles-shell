@@ -1,16 +1,25 @@
 # Get editor completions based on the config schema
 "$schema" = 'https://starship.rs/config-schema.json'
-
 [cmd_duration]
 min_time = 500
 
 [directory]
 truncation_length = 5
 
+[[battery.display]]
+threshold = 30
+
 [python]
 python_binary = ['python3', 'python']
 
 [time]
+disabled = false
+
+[status]
+disabled = false
+format = '[󰈆 $status]($style) '
+
+[sudo]
 disabled = false
 
 [custom.brazil_versionset]

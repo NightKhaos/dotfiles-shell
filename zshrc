@@ -1,7 +1,18 @@
+# Turn on profiling
+zmodload zsh/zprof
+
+# Kiro CLI pre block. Keep at the top of this file.
+[[ -f "${HOME}/.local/share/kiro-cli/shell/zshrc.pre.zsh" ]] && builtin source "${HOME}/.local/share/kiro-cli/shell/zshrc.pre.zsh"
+
 # Setup autocompletion
 mkdir -p ~/.zsh/completion
 fpath=(~/.zsh/completion $fpath)
-autoload -Uz compinit && compinit -i
+autoload -Uz compinit
+if [[ -n ${ZDOTDIR:-$HOME}/.zcompdump(#qN.mh+24) ]]; then
+  compinit
+else
+  compinit -C
+fi
 
 # Cycle through history based on characters already typed on the line
 autoload -U up-line-or-beginning-search
@@ -30,6 +41,7 @@ done
 
 # Shell preferences
 alias ls="ls --color"
+alias gs="git status"
 
 # AWS Useful Aliases and Functions
 alias whoiam='aws sts get-caller-identity'
@@ -52,8 +64,8 @@ function awsall {
   trap "break" INT TERM
 }
 
-# SCM Breeze
-[ -s "$HOME/.scm_breeze/scm_breeze.sh" ] && source "$HOME/.scm_breeze/scm_breeze.sh"
+# Sheldon plugin manager
+eval "$(sheldon source)"
 export JAVA_TOOLS_OPTIONS="-Dlog4j2.formatMsgNoLookups=true"
 
 # Setup thefuck
@@ -102,3 +114,7 @@ else
     prompt redhat
   fi
 fi
+
+
+# Kiro CLI post block. Keep at the bottom of this file.
+[[ -f "${HOME}/.local/share/kiro-cli/shell/zshrc.post.zsh" ]] && builtin source "${HOME}/.local/share/kiro-cli/shell/zshrc.post.zsh"
