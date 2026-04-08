@@ -1,0 +1,14 @@
+# ~/.zshenv — sourced for ALL shell sessions (login, interactive, scripts)
+# Managed by chezmoi via ~/.dotfiles-shell
+
+pupdate() { case ":${PATH:=$1}:" in *:"$1":*) ;; *) export PATH="$1:$PATH" ;; esac; }
+
+# Fallback PATH additions for non-graphical sessions (SSH, TTY)
+# Graphical sessions get these from ~/.config/environment.d/
+pupdate $HOME/.local/bin
+pupdate $HOME/bin
+
+# Source env.d drop-ins
+for file in $HOME/.zsh/env.d/*.env(N); do
+  source "$file"
+done

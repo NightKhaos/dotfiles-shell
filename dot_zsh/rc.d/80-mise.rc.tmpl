@@ -1,0 +1,10 @@
+{{ if .mise_enabled -}}
+# mise — polyglot version manager
+if (( $+commands[mise] )); then
+  if [[ -o interactive ]]; then
+    eval "$(mise activate zsh)"
+  else
+    eval "$(mise activate zsh --shims)"
+  fi
+fi
+{{- end }}

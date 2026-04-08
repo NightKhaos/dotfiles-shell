@@ -1,0 +1,19 @@
+# AWS CLI aliases and functions
+alias whoiam='aws sts get-caller-identity'
+
+awsall() {
+  export AWS_PAGER=""
+  local region
+  for region in $(aws ec2 describe-regions --query "Regions[].RegionName" --output text | tr '\t' '\n' | sort -r); do
+    echo "------"
+    echo "$region"
+    echo "------"
+    echo
+    if echo "$@" | grep -qi '\-\-region'; then
+      echo "You cannot use --region flag while using awsall"
+      return 1
+    fi
+    aws "$@" --region "$region"
+    sleep 2
+  done
+}
