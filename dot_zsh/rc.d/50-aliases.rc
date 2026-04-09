@@ -2,3 +2,6 @@
 alias ls="ls --color"
 alias gs="git status"
 alias dotfiles-apply='chezmoi apply && ~/.dotfiles/apply-externals.sh'
+
+# Clipboard (cliphist watcher picks up everything via wl-copy)
+alias clip='wl-copy'
