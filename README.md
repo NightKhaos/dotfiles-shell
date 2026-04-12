@@ -37,3 +37,10 @@ Other repos (e.g. `~/.dotfiles-amzn`) extend shell config by dropping files into
 - `completion/_*` — zsh completion functions
 
 See `~/.zsh/README.md` for conventions.
+
+## Known Gaps
+
+- **`.bashrc` protection**: Tools inject content into `~/.bashrc` without asking
+  (same problem as `~/.profile`). Needs to be deployed as `readonly_` to prevent
+  drive-by modification. Requires OS-aware content to preserve distro-specific
+  defaults from `/etc/skel/.bashrc`. See `~/.dotfiles/specs/discovery.md`.
