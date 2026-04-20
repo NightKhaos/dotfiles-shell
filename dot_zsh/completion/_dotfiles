@@ -1,0 +1,40 @@
+#compdef dotfiles
+# Completion for the `dotfiles` multi-repo chezmoi helper.
+# Source: ~/.dotfiles/dot_local/bin/executable_dotfiles
+
+_dotfiles() {
+  local -a subcommands
+  subcommands=(
+    'apply:chezmoi apply across ~/.dotfiles and every ~/.dotfiles-*'
+    'managed:list managed paths across all repos'
+    'unmanaged:list files under PATH that no repo manages'
+    'conflicts:paths claimed by more than one repo'
+  )
+
+  _arguments -C \
+    '1: :->subcommand' \
+    '*:: :->args'
+
+  case $state in
+    subcommand)
+      _describe -t subcommands 'dotfiles subcommand' subcommands
+      ;;
+    args)
+      case $words[1] in
+        managed)
+          _arguments \
+            '--who[annotate each path with owner repo(s)]' \
+            '1:path:_files'
+          ;;
+        unmanaged)
+          _arguments '1:path:_files'
+          ;;
+        apply|conflicts)
+          # No args.
+          ;;
+      esac
+      ;;
+  esac
+}
+
+_dotfiles "$@"
