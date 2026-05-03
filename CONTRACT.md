@@ -46,21 +46,69 @@ support is needed, propose widening this contract.
 
 ## starship
 
-**Config root**: `~/.config/starship.toml`
-**Ownership mode**: copy
+**Config root**: `~/.config/starship/` (source fragments)
+            plus `~/.config/starship.toml` (synthesised output)
+**Ownership mode**: `~/.config/starship/base.toml` — copy (owned here);
+            `~/.config/starship/starship.d/*.toml` — shared drop-in surface;
+            `~/.config/starship.toml` — `create_` (hook-owned at runtime)
 
 **Files managed**:
-- `starship.toml` — prompt configuration
+- `~/.config/starship/base.toml` — the prompt skeleton. Owned by this repo;
+  consumers must not modify.
+- `~/.config/starship/starship.d/.keep` — marker so the drop-in directory
+  exists on fresh machines even before any consumer contributes.
+- `~/.config/starship/starship.d/50-dotfiles-freshness.toml` — three-state
+  dotfiles staleness module (A/F/S). See `specs/future-features.md`
+  "Three-state Starship Dotfiles Freshness Indicator".
 
-**Drop-in surfaces**: none today. The planned `~/.config/starship.d/`
-fragment + synthesis model (see `specs/architecture.md` "Starship layering")
-is deferred work; when implemented it will add a drop-in surface and a
-`run_after_` synthesiser. Until then, consumers that need a distinct prompt
-(e.g. work overlay) must export `STARSHIP_CONFIG` pointing at their own
-file via the `~/.zsh/env.d/` surface.
+**Drop-in surfaces** (consumers may contribute):
+- `~/.config/starship/starship.d/NN-<ownertag>-<purpose>.toml` — TOML
+  fragments merged into the final starship config. Master-contract
+  `X0/X!0` filename-ordering applies: `X0-` prefixes reserved for this
+  repo, consumers use any non-zero-tens prefix. Load order rarely
+  matters because the merger rejects conflicts rather than silently
+  last-writes.
+- Adjacent support scripts under `~/.local/share/<ownertag>-starship/`
+  or equivalent — consumers own their filesystem neighbourhood outside
+  starship's config tree.
 
-**Consumer constraints**: consumers must not add files to
-`~/.config/starship.toml` or a hypothetical `starship.d/` yet.
+**Merge semantics** (consumer-facing contract):
+- Fragments are deep-merged by `~/.local/share/dotfiles-shell/merge-toml`
+  into `~/.config/starship.toml`. Disjoint top-level tables merge
+  cleanly. Nested tables recurse.
+- Two fragments setting the same leaf key to **different** values is a
+  hard error: the merger rejects it with a clear message naming both
+  fragments. Two fragments setting the same leaf to the same value is
+  benign (no-op).
+- Arrays and arrays-of-tables are treated as leaf values: a fragment
+  that provides an array replaces any prior array at that key. Merging
+  array *contents* is not supported.
+- Comments in source fragments are authoritative — they do not survive
+  into the synthesised `~/.config/starship.toml` (which bears a
+  generated-file header instead).
+
+**Synthesis hook**: `~/.local/share/dotfiles/hooks/50-compose-starship.sh`
+(deployed by this repo into the master-contract shared hooks dir).
+Invoked after `dotfiles apply` completes across every repo, so all
+consumer fragments are on disk before merging. Atomic write preserves
+mtime when inputs are unchanged (shell-staleness indicator contract).
+
+**Runtime-generated files** (`create_`):
+- `~/.config/starship.toml` — declared as `create_` so chezmoi deploys
+  a placeholder on first apply but never overwrites hook output. Appears
+  in `chezmoi managed` output; `chezmoi status`/`diff` do not report
+  drift on it (per `specs/lessons-learned.md` "create_ semantics").
+
+**Consumer constraints**:
+- Do not add files to `~/.config/starship/` directly — only inside
+  `starship.d/`.
+- Do not write to `~/.config/starship.toml` — it is hook-owned. If a
+  consumer needs a distinct prompt (a full replacement rather than an
+  additive fragment), export `STARSHIP_CONFIG` via `~/.zsh/env.d/` to
+  point at their own file.
+- Do not depend on load order between consumer fragments or across
+  consumer / manager fragments. The merger's ordering is stable but is
+  not a contract — consumers that need ordering must use disjoint keys.
 
 ---
 

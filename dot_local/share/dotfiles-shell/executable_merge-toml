@@ -1,0 +1,295 @@
+#!/usr/bin/env python3
+"""
+merge-toml — deep-merge multiple TOML files into one.
+
+Usage:
+    merge-toml BASE FRAGMENT [FRAGMENT ...] > OUTPUT
+    merge-toml BASE FRAGMENT [FRAGMENT ...] -o OUTPUT
+
+Semantics:
+    - Each fragment is merged into the accumulating result in argument order.
+    - Tables (dict-like) merge recursively.
+    - Leaf values (scalars, arrays, arrays-of-tables) do NOT merge — the
+      fragment's value replaces the earlier value. A CONFLICT (two different
+      leaf values at the same key) is a hard error, not silent override:
+      this preserves the "each fragment owns disjoint keys" contract that
+      makes the multi-repo drop-in model safe.
+    - Arrays-of-tables are treated as leaf values (full replacement). Merging
+      array contents would require a join key we don't have.
+
+Output:
+    TOML written to stdout (or -o PATH), with a generated-file header
+    listing the source files in merge order. The output is stable:
+    sorted-key emission at every level, so repeated runs produce identical
+    bytes when inputs haven't changed.
+
+Exit codes:
+    0  success
+    1  usage error
+    2  parse error in an input file
+    3  merge conflict (two fragments set different values at the same leaf)
+
+Dependencies: Python stdlib only (tomllib from 3.11+).
+"""
+from __future__ import annotations
+
+import argparse
+import sys
+import tomllib
+from pathlib import Path
+from typing import Any
+
+
+class MergeConflict(Exception):
+    """Two sources set different values at the same leaf key."""
+
+    def __init__(self, path: list[str], left_src: str, right_src: str,
+                 left_val: Any, right_val: Any) -> None:
+        key = ".".join(path) if path else "<root>"
+        super().__init__(
+            f"conflict at key {key!r}: "
+            f"{left_src!r} sets {left_val!r}, "
+            f"{right_src!r} sets {right_val!r}"
+        )
+
+
+def deep_merge(acc: dict, incoming: dict,
+               acc_src: str, incoming_src: str,
+               path: list[str] | None = None) -> dict:
+    """Recursively merge `incoming` into `acc`, in place, and return `acc`.
+
+    `acc_src` and `incoming_src` are file labels used for conflict messages.
+    When a key exists in both and both values are tables, recurse. When a key
+    exists in both and at least one side is a non-table, require value
+    equality — otherwise raise MergeConflict.
+    """
+    path = path or []
+    for key, inc_val in incoming.items():
+        cur_path = path + [key]
+        if key not in acc:
+            acc[key] = inc_val
+            continue
+        acc_val = acc[key]
+        if isinstance(acc_val, dict) and isinstance(inc_val, dict):
+            deep_merge(acc_val, inc_val, acc_src, incoming_src, cur_path)
+        elif acc_val == inc_val:
+            # Identical values at the same key — benign, no-op.
+            pass
+        else:
+            raise MergeConflict(cur_path, acc_src, incoming_src,
+                                acc_val, inc_val)
+    return acc
+
+
+# ---------- TOML emission ----------
+#
+# Hand-rolled emitter because tomllib is read-only and we want zero external
+# deps. Emits a restricted but sufficient subset of TOML for starship configs:
+# strings, ints, floats, bools, arrays (of homogeneous scalars), tables,
+# arrays-of-tables.
+
+def _emit_string(s: str) -> str:
+    """Emit a TOML string literal. Use triple-quoted basic-string form for
+    multiline strings, otherwise basic string."""
+    if "\n" in s:
+        # Escape backslashes and triple-quotes, leave newlines literal.
+        body = s.replace("\\", "\\\\").replace('"""', '\\"\\"\\"')
+        return f'"""\n{body}"""'
+    # Basic string: escape backslashes, double quotes, control chars.
+    body = (s.replace("\\", "\\\\")
+             .replace('"', '\\"')
+             .replace("\t", "\\t")
+             .replace("\r", "\\r")
+             .replace("\b", "\\b")
+             .replace("\f", "\\f"))
+    return f'"{body}"'
+
+
+def _emit_scalar(v: Any) -> str:
+    if isinstance(v, bool):
+        # bool before int — bool is a subclass of int in Python.
+        return "true" if v else "false"
+    if isinstance(v, int):
+        return str(v)
+    if isinstance(v, float):
+        return repr(v)
+    if isinstance(v, str):
+        return _emit_string(v)
+    raise TypeError(f"unsupported scalar type: {type(v).__name__} ({v!r})")
+
+
+def _emit_array(v: list) -> str:
+    return "[" + ", ".join(_emit_scalar(x) for x in v) + "]"
+
+
+def _emit_value(v: Any) -> str:
+    if isinstance(v, list):
+        return _emit_array(v)
+    return _emit_scalar(v)
+
+
+def _is_table(v: Any) -> bool:
+    return isinstance(v, dict)
+
+
+def _is_array_of_tables(v: Any) -> bool:
+    return (isinstance(v, list) and len(v) > 0
+            and all(isinstance(x, dict) for x in v))
+
+
+def _emit_table(header: str | None, table: dict,
+                out: list[str], parent_path: list[str]) -> None:
+    """Emit a single [table] block, then recurse into sub-tables.
+
+    Emission order for this block:
+      1. Optional header line `[a.b.c]` (skipped for the root table).
+      2. Scalar / array key-value lines (sorted by key).
+      3. Recurse into sub-tables (sorted by key).
+      4. Recurse into arrays-of-tables (sorted by key).
+    """
+    scalars = {}
+    subtables = {}
+    array_tables = {}
+    for key, val in table.items():
+        if _is_array_of_tables(val):
+            array_tables[key] = val
+        elif _is_table(val):
+            subtables[key] = val
+        else:
+            scalars[key] = val
+
+    if header is not None and (scalars or not subtables and not array_tables):
+        # Emit header if this table has scalars of its own, OR it's empty
+        # (valid TOML: `[a.b]\n` is allowed with no keys).
+        out.append(f"[{header}]")
+    elif header is not None and scalars:
+        out.append(f"[{header}]")
+
+    for key in sorted(scalars):
+        out.append(f"{_toml_key(key)} = {_emit_value(scalars[key])}")
+    if scalars or header is not None:
+        out.append("")  # blank line separator
+
+    for key in sorted(subtables):
+        sub_path = parent_path + [key]
+        sub_header = ".".join(_toml_key(p) for p in sub_path)
+        _emit_table(sub_header, subtables[key], out, sub_path)
+
+    for key in sorted(array_tables):
+        sub_path = parent_path + [key]
+        aot_header = ".".join(_toml_key(p) for p in sub_path)
+        for entry in array_tables[key]:
+            out.append(f"[[{aot_header}]]")
+            # Array-of-tables entries: emit scalars and sub-tables inline.
+            ent_scalars = {k: v for k, v in entry.items()
+                           if not _is_table(v) and not _is_array_of_tables(v)}
+            ent_subs = {k: v for k, v in entry.items() if _is_table(v)}
+            ent_aots = {k: v for k, v in entry.items()
+                        if _is_array_of_tables(v)}
+            for k in sorted(ent_scalars):
+                out.append(f"{_toml_key(k)} = {_emit_value(ent_scalars[k])}")
+            out.append("")
+            # Nested tables under an AoT entry: rare in starship configs;
+            # emit with full dotted header prefix.
+            for k in sorted(ent_subs):
+                _emit_table(
+                    ".".join(_toml_key(p) for p in sub_path + [k]),
+                    ent_subs[k], out, sub_path + [k])
+            for k in sorted(ent_aots):
+                for aoe in ent_aots[k]:
+                    h = ".".join(_toml_key(p) for p in sub_path + [k])
+                    out.append(f"[[{h}]]")
+                    # Non-recursive: flatten scalars only. Starship configs
+                    # don't nest this deeply.
+                    for kk in sorted(aoe):
+                        vv = aoe[kk]
+                        if _is_table(vv) or _is_array_of_tables(vv):
+                            raise NotImplementedError(
+                                f"nested table under array-of-tables entry "
+                                f"at {sub_path + [k, kk]!r} — unsupported")
+                        out.append(
+                            f"{_toml_key(kk)} = {_emit_value(vv)}")
+                    out.append("")
+
+
+def _toml_key(k: str) -> str:
+    """Quote a bare key if it contains characters outside [A-Za-z0-9_-]."""
+    if k and all(c.isalnum() or c in "_-" for c in k):
+        return k
+    return _emit_string(k)
+
+
+def emit_toml(data: dict, header_lines: list[str]) -> str:
+    out: list[str] = []
+    out.extend(header_lines)
+    if header_lines:
+        out.append("")
+    # Emit root-level scalars first, then sub-tables.
+    _emit_table(None, data, out, [])
+    # Join and collapse trailing blank runs to exactly one.
+    text = "\n".join(out).rstrip() + "\n"
+    return text
+
+
+# ---------- Main ----------
+
+def main(argv: list[str] | None = None) -> int:
+    ap = argparse.ArgumentParser(
+        description="Deep-merge TOML files with conflict detection.")
+    ap.add_argument("inputs", nargs="+", type=Path,
+                    help="one or more TOML files, merged in order")
+    ap.add_argument("-o", "--output", type=Path,
+                    help="output path (default: stdout)")
+    ap.add_argument("--no-header", action="store_true",
+                    help="omit the generated-file header comment")
+    args = ap.parse_args(argv)
+
+    if len(args.inputs) < 1:
+        print("merge-toml: need at least one input file", file=sys.stderr)
+        return 1
+
+    acc: dict = {}
+    labels: list[str] = []
+    for path in args.inputs:
+        if not path.is_file():
+            print(f"merge-toml: not a file: {path}", file=sys.stderr)
+            return 1
+        try:
+            with path.open("rb") as f:
+                data = tomllib.load(f)
+        except tomllib.TOMLDecodeError as e:
+            print(f"merge-toml: parse error in {path}: {e}", file=sys.stderr)
+            return 2
+        label = str(path)
+        try:
+            deep_merge(acc, data,
+                       acc_src=", ".join(labels) if labels else "<empty>",
+                       incoming_src=label)
+        except MergeConflict as e:
+            print(f"merge-toml: {e}", file=sys.stderr)
+            return 3
+        labels.append(label)
+
+    header: list[str] = []
+    if not args.no_header:
+        header.append("# GENERATED FILE — do not edit.")
+        header.append("# Synthesised by merge-toml from, in order:")
+        for label in labels:
+            header.append(f"#   - {label}")
+        header.append("# Edit the source fragments and re-run the compose "
+                      "hook (or `dotfiles apply`).")
+
+    text = emit_toml(acc, header)
+
+    if args.output:
+        tmp = args.output.with_suffix(args.output.suffix + ".tmp")
+        tmp.write_text(text)
+        tmp.replace(args.output)
+    else:
+        sys.stdout.write(text)
+
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

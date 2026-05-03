@@ -1,0 +1,115 @@
+#!/bin/sh
+# starship-freshness — backend for the dotfiles freshness starship modules.
+#
+# The starship side has three sibling custom modules — one per state — each
+# calling this script with its own state letter. This shape lets each module
+# carry its own static colour (red/yellow/bright-black) without command-output
+# style-markup injection, which starship escapes by default per its
+# `unsafe_no_escape` contract.
+#
+# Subcommands:
+#   when <STATE>   Exit 0 if the dotfiles cache's current state matches STATE
+#                  (one of A, F, S). Exit 1 otherwise. Triggers a background
+#                  refresh of the cache if stale; never blocks the prompt.
+#
+# STATE semantics (priority A > F > S; only the highest-priority active
+# state is reported at any time by `dotfiles check`):
+#   A   at least one repo has unapplied changes
+#   F   at least one repo is behind upstream
+#   S   at least one repo has a stale fetch
+#   .   all clean — all modules are suppressed
+#
+# Cache file: $XDG_RUNTIME_DIR/dotfiles/check (produced by `dotfiles check`
+# per the dotfiles CLI contract).
+#
+# TTL: if the cache mtime is older than $TTL_SECONDS, we spawn a background
+# `dotfiles check` to refresh. The current (stale) value is used for this
+# prompt; the next prompt gets the fresh value.
+
+set -u
+
+: "${XDG_RUNTIME_DIR:=/run/user/$(id -u)}"
+CACHE="${XDG_RUNTIME_DIR}/dotfiles/check"
+TTL_SECONDS=60
+
+# Background refresh. Non-blocking. Silenced so we don't pollute the prompt.
+# A pidfile lock prevents multiple concurrent refreshes from piling up when
+# prompts fire rapidly (e.g. mashing enter).
+refresh_bg() {
+    lock="${CACHE}.refresh.pid"
+    if [ -f "${lock}" ]; then
+        pid=$(cat "${lock}" 2>/dev/null)
+        if [ -n "${pid}" ] && kill -0 "${pid}" 2>/dev/null; then
+            return 0
+        fi
+    fi
+    (
+        echo $$ > "${lock}"
+        dotfiles check >/dev/null 2>&1
+        rm -f "${lock}"
+    ) </dev/null >/dev/null 2>&1 &
+}
+
+cache_age_seconds() {
+    if [ ! -f "${CACHE}" ]; then
+        echo -1
+        return
+    fi
+    now=$(date +%s)
+    mtime=$(stat -c %Y "${CACHE}" 2>/dev/null || echo 0)
+    echo $((now - mtime))
+}
+
+cache_state() {
+    # Return the current state letter (A/F/S/.), or empty if no cache.
+    if [ ! -f "${CACHE}" ]; then
+        return
+    fi
+    head -c 1 "${CACHE}" 2>/dev/null
+}
+
+# `when <STATE>`: exit 0 if the cache's current state matches STATE.
+# Handles TTL-based background refresh and missing-cache fallback.
+when_mode() {
+    want="${1:-}"
+    case "${want}" in
+        A|F|S) ;;
+        *)
+            echo "starship-freshness: expected state A|F|S, got '${want}'" >&2
+            exit 2
+            ;;
+    esac
+
+    if ! command -v dotfiles >/dev/null 2>&1; then
+        # `dotfiles` CLI not installed on this machine — silent no-op.
+        exit 1
+    fi
+
+    age=$(cache_age_seconds)
+    if [ "${age}" -lt 0 ]; then
+        # No cache yet. Spawn refresh; next prompt gets the answer. Skip now.
+        refresh_bg
+        exit 1
+    fi
+    if [ "${age}" -ge "${TTL_SECONDS}" ]; then
+        refresh_bg
+        # Fall through — render from the slightly-stale value.
+    fi
+
+    cur=$(cache_state)
+    if [ "${cur}" = "${want}" ]; then
+        exit 0
+    fi
+    exit 1
+}
+
+case "${1:-}" in
+    when)
+        shift
+        when_mode "$@"
+        ;;
+    *)
+        echo "usage: $0 when {A|F|S}" >&2
+        exit 2
+        ;;
+esac

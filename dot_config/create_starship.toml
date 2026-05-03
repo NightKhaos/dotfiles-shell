@@ -1,0 +1,15 @@
+# This file is a placeholder.
+#
+# The real starship config is synthesised by the post-apply hook
+# 50-compose-starship.sh, which merges:
+#   - ~/.config/starship/base.toml       (owned by dotfiles-shell)
+#   - ~/.config/starship/starship.d/*.toml  (fragments from any repo)
+#
+# If you're seeing this file unchanged after `dotfiles apply`, the hook
+# has not yet run. Run `dotfiles apply` (which runs all post-apply hooks)
+# or invoke the hook directly:
+#
+#   ~/.local/share/dotfiles/hooks/50-compose-starship.sh
+#
+# Declared as `create_` so chezmoi deploys the placeholder on first apply
+# but never overwrites hook output on subsequent applies.

@@ -1,0 +1,63 @@
+# dotfiles freshness indicator
+#
+# Three-state signal for "the multi-repo dotfiles tree is out of date":
+#   A — unapplied changes (highest priority — red)
+#   F — behind upstream      (mid priority     — yellow)
+#   S — stale fetch          (lowest priority  — bright black)
+#
+# Priority: A > F > S. Only the highest-priority active signal renders.
+# `dotfiles check` enforces that priority by emitting only the top letter,
+# so at most one of these three sibling modules will match `when` at a time.
+# When all repos are clean (cache content is "."), all three suppress and
+# the module disappears entirely from the prompt.
+#
+# See specs/future-features.md "Three-state Starship Dotfiles Freshness
+# Indicator" for the full design.
+#
+# Each module emits:  <U+F192 circle-dot prefix><U+2009 thin space><status glyph>
+#   • Prefix identifies the module as "dotfiles" — same prefix on all three
+#     states for visual cohesion across the urgency ladder.
+#   • Thin space (U+2009) groups prefix and status as a single semantic
+#     unit. In monospace terminals this collapses to a regular cell;
+#     in non-monospace fonts it narrows as intended.
+#   • Status glyph differentiates A/F/S.
+#   • Colour reinforces urgency (bright black → yellow → red) using ANSI
+#     names so the wallust-derived palette is honoured.
+#
+# The glyphs are stored as literal UTF-8 characters rather than \u/\U
+# escape sequences because starship pipes `command` to /bin/sh (dash on
+# Ubuntu 24.04), which does not support printf escape sequences beyond
+# the C escapes. Literal UTF-8 in a TOML string + `printf '%s'` is
+# portable to any POSIX shell.
+#
+# Cache file: $XDG_RUNTIME_DIR/dotfiles/check (produced by `dotfiles check`).
+# Refresh: backgrounded from the `when` hook when the cache exceeds TTL —
+# never blocks the prompt.
+#
+# starship custom module `shell` pipes `when`/`command` to the shell via
+# stdin (not as a -c argument), so `shell = ["sh"]` is correct and
+# `["sh", "-c"]` would silently break the module.
+
+[custom.dotfiles_freshness_a]
+description = "dotfiles: unapplied changes (A)"
+shell = ["sh"]
+when = "~/.local/share/dotfiles-shell/starship-freshness when A"
+command = "printf '%s' ' 󰓧'"
+format = "[$output]($style) "
+style = "bold red"
+
+[custom.dotfiles_freshness_f]
+description = "dotfiles: behind upstream (F)"
+shell = ["sh"]
+when = "~/.local/share/dotfiles-shell/starship-freshness when F"
+command = "printf '%s' ' 󰚰'"
+format = "[$output]($style) "
+style = "bold yellow"
+
+[custom.dotfiles_freshness_s]
+description = "dotfiles: stale fetch (S)"
+shell = ["sh"]
+when = "~/.local/share/dotfiles-shell/starship-freshness when S"
+command = "printf '%s' ' 󰓦'"
+format = "[$output]($style) "
+style = "bright black"
