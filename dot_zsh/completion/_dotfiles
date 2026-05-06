@@ -8,7 +8,11 @@ _dotfiles() {
     'apply:chezmoi apply across ~/.dotfiles and every ~/.dotfiles-*'
     'managed:list managed paths across all repos'
     'unmanaged:list files under PATH that no repo manages'
-    'conflicts:paths claimed by more than one repo'
+    'conflicts:paths claimed by more than one repo (exit 3 on any)'
+    'status:per-repo chezmoi status summary (exit 4 if any drift)'
+    'fetch-status:per-repo upstream-commit state without fetching (exit 5 if any behind/stale)'
+    'fetch:run git fetch across all repos (mutating); designed for systemd timer use'
+    'check:combined single-line status for prompt consumers'
   )
 
   _arguments -C \
@@ -23,13 +27,28 @@ _dotfiles() {
       case $words[1] in
         managed)
           _arguments \
-            '--who[annotate each path with owner repo(s)]' \
+            '--who[annotate each path with owner repo(s); exit 3 on multi-owner]' \
             '1:path:_files'
           ;;
         unmanaged)
           _arguments '1:path:_files'
           ;;
-        apply|conflicts)
+        fetch-status)
+          _arguments \
+            '--stale-after-seconds[treat repo as stale if last fetch older than N seconds (default 21600)]:seconds:'
+          ;;
+        fetch)
+          _arguments \
+            '--refresh-after-seconds[skip repos whose last fetch was within N seconds (default 5400)]:seconds:' \
+            '--max-staleness-seconds[escalate to exit 7 if any repo older than N seconds (default 604800)]:seconds:' \
+            '--timeout[per-repo git fetch timeout in seconds (default 10)]:seconds:' \
+            '--force[ignore --refresh-after-seconds, fetch every repo with an upstream]'
+          ;;
+        check)
+          _arguments \
+            '--stale-after-seconds[staleness threshold for fetch-status (default 21600)]:seconds:'
+          ;;
+        apply|conflicts|status)
           # No args.
           ;;
       esac
