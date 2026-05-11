@@ -1,0 +1,45 @@
+# rsvp-term integration
+#
+# Provides:
+#   rsvp-md  — wrapper around rsvp-term that strips YAML frontmatter first
+#   readr    — convenience alias pointing at rsvp-md
+#
+# Both are guarded on rsvp-term being installed; if it is not present, this
+# file is a no-op and the names are not defined.
+#
+# The rsvp-md wrapper is a workaround for rsvp-term issue #4 (frontmatter
+# not stripped) and depends on the strip-frontmatter helper shipped
+# alongside in this repo's dot_local/bin. If upstream fixes #4, the
+# rsvp-md function can be deleted and the readr alias can point directly
+# at rsvp-term.
+
+if (( $+commands[rsvp-term] )); then
+    rsvp-md() {
+        emulate -L zsh
+        setopt pipe_fail
+
+        local src="${1:--}"
+
+        if [[ "$src" == "-" ]]; then
+            # Stdin: buffer to temp file because rsvp-term is a TUI and
+            # cannot share stdin with a pipe producer.
+            local tmp
+            tmp="$(mktemp --suffix=.md)" || return 1
+            # shellcheck disable=SC2064
+            trap "rm -f '$tmp'" EXIT INT TERM
+
+            strip-frontmatter - > "$tmp" || return $?
+            rsvp-term "$tmp"
+        else
+            if [[ ! -r "$src" ]]; then
+                print -u2 "rsvp-md: cannot read: $src"
+                return 1
+            fi
+            # File: strip to stdout and let rsvp-term read from /dev/stdin,
+            # avoiding a temp file on disk.
+            strip-frontmatter "$src" | rsvp-term /dev/stdin
+        fi
+    }
+
+    alias readr='rsvp-md'
+fi

@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# strip-frontmatter — remove YAML frontmatter from a markdown file.
+#
+# Reads from the named file or stdin, writes to stdout.
+# Only strips frontmatter if the input begins with `---` on line 1 AND a
+# matching closing `---` is found within the first 1000 lines. Otherwise
+# passes the input through unchanged.
+#
+# Usage:
+#   strip-frontmatter FILE
+#   ... | strip-frontmatter
+#   ... | strip-frontmatter -
+
+set -uo pipefail
+
+# Resolve source: file argument, or stdin if "-" / no argument
+src="${1:--}"
+if [[ "$src" == "-" ]]; then
+    src=/dev/stdin
+fi
+
+if [[ ! -r "$src" ]]; then
+    echo "strip-frontmatter: cannot read: $src" >&2
+    exit 1
+fi
+
+# Buffer stdin to a temp file so we can make two passes (detect + emit).
+# For regular files we can pass the path directly to awk (one pass is fine,
+# but we use the same code path for simplicity).
+tmp=""
+if [[ "$src" == "/dev/stdin" ]]; then
+    tmp="$(mktemp)"
+    # shellcheck disable=SC2064
+    trap "rm -f '$tmp'" EXIT
+    cat > "$tmp"
+    src="$tmp"
+fi
+
+awk '
+    # Line 1: decide whether this looks like frontmatter at all
+    NR == 1 {
+        if ($0 == "---") {
+            in_fm = 1
+            next
+        } else {
+            # Not frontmatter — emit this line and switch to pass-through
+            print
+            pass = 1
+            next
+        }
+    }
+
+    # Pass-through mode: no frontmatter detected, emit everything
+    pass { print; next }
+
+    # Inside frontmatter: look for closing delimiter
+    in_fm {
+        if ($0 == "---") {
+            in_fm = 0
+            past_fm = 1
+            next
+        }
+        # Safety: if we do not find a closing delimiter within 1000 lines,
+        # assume the leading `---` was not frontmatter after all and bail
+        # out. We cannot recover the buffered frontmatter lines in a
+        # streaming awk, so record this and handle post-hoc.
+        if (NR > 1000) {
+            unterminated = 1
+            exit
+        }
+        next
+    }
+
+    # After frontmatter: emit everything unchanged
+    past_fm { print }
+
+    END {
+        # If we hit EOF while still inside frontmatter, the leading `---`
+        # was not actually a frontmatter delimiter. Signal to shell to
+        # re-emit the file verbatim.
+        if (in_fm || unterminated) exit 2
+    }
+' "$src"
+
+awk_status=$?
+
+# If awk bailed out with "unterminated frontmatter", re-emit the whole file
+# verbatim (the leading `---` was not actually a frontmatter delimiter).
+if [[ $awk_status -eq 2 ]]; then
+    cat "$src"
+elif [[ $awk_status -ne 0 ]]; then
+    exit "$awk_status"
+fi
