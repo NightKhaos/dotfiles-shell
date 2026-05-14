@@ -1,0 +1,32 @@
+# First-class shell completion generators.
+#
+# Each block is gated on the tool being installed and writes the completion
+# script to ~/.zsh/completion/_<tool> on first run. compinit autodiscovers
+# files there on the next shell start (compinit runs before rc.d/, so the
+# completion is active from the second shell after the tool is installed).
+#
+# Pattern matches the `_ada` block in dotfiles-amzn/rc.d/01-amzn-work.rc.
+
+_completion_cache_dir=~/.zsh/completion
+
+# gh — GitHub CLI
+if (( $+commands[gh] )) && [ ! -f "$_completion_cache_dir/_gh" ]; then
+  gh completion -s zsh > "$_completion_cache_dir/_gh" 2>/dev/null
+fi
+
+# uv — Python package/tool manager
+if (( $+commands[uv] )) && [ ! -f "$_completion_cache_dir/_uv" ]; then
+  uv generate-shell-completion zsh > "$_completion_cache_dir/_uv" 2>/dev/null
+fi
+
+# chezmoi — dotfile manager
+if (( $+commands[chezmoi] )) && [ ! -f "$_completion_cache_dir/_chezmoi" ]; then
+  chezmoi completion zsh > "$_completion_cache_dir/_chezmoi" 2>/dev/null
+fi
+
+# podman — container runtime
+if (( $+commands[podman] )) && [ ! -f "$_completion_cache_dir/_podman" ]; then
+  podman completion zsh > "$_completion_cache_dir/_podman" 2>/dev/null
+fi
+
+unset _completion_cache_dir
