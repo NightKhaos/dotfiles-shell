@@ -19,6 +19,10 @@ if [[ -n ${ZDOTDIR:-$HOME}/.zcompdump(#qN.mh+24) ]]; then
 else
   compinit -C
 fi
+# bashcompinit provides the bash-style `complete` builtin, used by tools that
+# only ship bash completion (e.g. AWS CLI v2's `complete -C aws_completer aws`
+# in an rc.d drop-in). Must load after compinit.
+autoload -Uz bashcompinit && bashcompinit
 
 # History search — cycle through history based on characters already typed
 autoload -U up-line-or-beginning-search
