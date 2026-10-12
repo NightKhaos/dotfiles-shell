@@ -148,6 +148,12 @@ bind -T copy-mode-vi 'C-\' select-pane -l
 #      guarantees the cursor-clip feed. Absent/unreachable → it's a no-op and layer
 #      1 still carries the copy: copy-pipe sets the tmux buffer (which triggers
 #      OSC52) regardless of what the pipe target does with the bytes.
+# Refresh the session-locating vars from whichever client attaches. The server
+# is started by systemd (tmux.service) before any graphical session exists, so
+# its global environment has no Wayland vars; copying them per attach also keeps
+# HYPRLAND_INSTANCE_SIGNATURE current across a compositor restart. Only the
+# named vars are copied, so client-local state (an IDE's venv) cannot leak in.
+set -ga update-environment ' WAYLAND_DISPLAY HYPRLAND_INSTANCE_SIGNATURE XDG_CURRENT_DESKTOP XDG_SESSION_TYPE'
 set -g set-clipboard on
 CLIP='command -v wl-copy >/dev/null 2>&1 && wl-copy 2>/dev/null || cat'
 bind -T copy-mode-vi y     send-keys -X copy-pipe-and-cancel "$CLIP"

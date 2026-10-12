@@ -1,0 +1,21 @@
+[Unit]
+Description=tmux server (clean session environment)
+Documentation=man:tmux(1)
+# Started by systemd rather than by whichever terminal runs `tmux` first: the
+# first client's environment becomes the server's global environment, so a
+# server born inside an IDE terminal leaks that terminal's state (an activated
+# venv, JEDITERM_SOURCE, PATH) into every later pane. The user manager's
+# environment is clean. No graphical ordering: Wayland vars arrive per attach
+# via update-environment in tmux.conf, so this unit is identical on headless
+# hosts.
+
+[Service]
+# -D runs the server in the foreground and turns exit-empty off, so it stays
+# up with zero sessions and systemd tracks the real PID.
+ExecStart=/usr/bin/tmux -D
+ExecStop=/usr/bin/tmux kill-server
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
