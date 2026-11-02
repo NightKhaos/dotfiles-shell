@@ -112,6 +112,47 @@ mtime when inputs are unchanged (shell-staleness indicator contract).
 
 ---
 
+## mise
+
+**Config root**: `~/.config/mise/`
+**Ownership mode**: copy (no `exact_` — `config.toml` beside the drop-ins is
+deliberately unmanaged)
+
+**Files managed**:
+- `conf.d/50-tools.toml` — the baseline tool list (terminalizer).
+- `~/.local/share/dotfiles/hooks/60-mise-install.sh` — post-apply hook that
+  installs any tool declared but missing (see below).
+- `~/.zsh/rc.d/80-mise.rc` — shell activation (listed under the zsh drop-ins).
+
+**Not managed**: `config.toml`. It holds this machine's own choices (default
+Rust, Python, Java, Node, aws-cli) and is where `mise use -g` writes. Managing
+it whole would pin those choices for every machine.
+
+**How the layers combine** (verified 2026-11-02, mise 2026.10.25): mise loads
+`~/.config/mise/conf.d/*.toml` as global config alongside `config.toml`, and
+**`config.toml` wins** for a tool both define. So a drop-in declares a
+baseline, and a local entry overrides it without editing a managed file.
+
+**Installing**: chezmoi only deploys declarations. `60-mise-install.sh` runs
+after every `dotfiles apply`: no mise → warn and exit 0; nothing missing
+(`mise ls --global --missing`, local state only) → exit 0; otherwise
+`mise install --yes`, exiting non-zero on failure so the apply reports it.
+
+**Drop-in surfaces** (consumers may contribute):
+- `conf.d/NN-<ownertag>-<purpose>.toml` — follows the master `X0`/`X!0`
+  scheme; this repo uses `X0-`, consumers `X!0-`. Today:
+  `51-vim-neovim.toml` (dotfiles-vim), `51-amzn-tools.toml` (dotfiles-amzn:
+  golangci-lint, gradle, grype, syft), `51-dotfiles-claude.toml`
+  (`~/.dotfiles`: tmux-mcp-rs).
+
+**Consumer constraints**: one tool per owner — a tool declared in two
+drop-ins resolves by load order, which is a conflict to fix, not a feature.
+Pin only when a version is load-bearing (gradle for Amazon builds); otherwise
+`latest`. Python tools come from `uv tool install`, not here (see
+`~/.dotfiles/specs/provenance.md`).
+
+---
+
 ## tmux
 
 **Config root**: `~/.config/tmux/`

@@ -1,0 +1,8 @@
+# Baseline mise tools (managed by chezmoi: dotfiles-shell, the manager of this
+# directory). mise loads ~/.config/mise/conf.d/*.toml as global config, and
+# ~/.config/mise/config.toml (unmanaged: local choices such as the default
+# Rust) wins for any tool both define, so a local pin overrides this baseline.
+# The 60-mise-install post-apply hook installs anything declared but missing.
+
+[tools]
+"npm:terminalizer" = "latest"
