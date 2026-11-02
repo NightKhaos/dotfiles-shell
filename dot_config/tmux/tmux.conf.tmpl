@@ -27,6 +27,17 @@ set -g message-style "bg=colour31,fg=colour231"              # command prompt: b
 set -g pane-active-border-style "fg=colour31"
 set -g pane-border-style "fg=colour238"
 
+# --- status bar layout -----------------------------------------------------
+# tmux's defaults clip both ends: status-left-length 10 cuts "[session] " after
+# 8 characters of name, and status-right shows the pane title through
+# #{=21:…}. Sessions get descriptive names (e.g. dotfiles-local) and Claude
+# Code writes its task into the pane title, so both get room, each capped with
+# an ellipsis so one long value cannot push the window list off the bar.
+set -g status-left-length 40
+set -g status-left "[#{=/32/…:session_name}] "
+set -g status-right-length 80
+set -g status-right "#{?window_bigger,[#{window_offset_x}#,#{window_offset_y}] ,}\"#{=/48/…:pane_title}\" %H:%M %d-%b-%y"
+
 # --- behaviour -------------------------------------------------------------
 set -g mode-keys vi            # vi-style copy mode (h/j/k/l, v, y, /)
 set -g base-index 1            # windows number from 1
