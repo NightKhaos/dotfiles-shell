@@ -161,6 +161,10 @@ Pin only when a version is load-bearing (gradle for Amazon builds); otherwise
 **Files managed**:
 - `~/.config/tmux/tmux.conf` — base tmux config (terminfo, vi copy mode,
   nvim-friendly `escape-time`, sane indexing/mouse defaults).
+- `~/.config/tmux/scripts/teammate-mover.sh` — run by tmux.conf's
+  `after-split-window` hook; moves Claude Code agent-team panes out of the
+  lead's window (workaround for anthropics/claude-code#23615). Retire it once
+  placement is configurable upstream.
 
 **Drop-in surfaces**: none currently. tmux has a single canonical config file.
 If per-consumer tmux config is ever needed, widen this contract with a

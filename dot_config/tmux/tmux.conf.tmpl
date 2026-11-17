@@ -38,6 +38,19 @@ set -g status-left "[#{=/32/…:session_name}] "
 set -g status-right-length 80
 set -g status-right "#{?window_bigger,[#{window_offset_x}#,#{window_offset_y}] ,}\"#{=/48/…:pane_title}\" %H:%M %d-%b-%y"
 
+# --- Claude Code agent-team panes ------------------------------------------
+# With teammateMode "tmux" and the lead running inside tmux, Claude Code splits
+# every teammate into the lead's own window (anthropics/claude-code#23615). Until
+# that's configurable, a hook moves each new pane that turns out to run a
+# `claude … --agent-id …` process into a window named @teammate_window, then
+# applies @teammate_layout. Ordinary splits never run --agent-id and stay put.
+# Set @teammate_window to "" to turn it off.
+# #{pane_id} (not #{hook_pane}, which is empty in tmux 3.4) is the new pane here,
+# and #{socket_path} pins the script to this server, since pane ids are per server.
+set -g @teammate_window "agents"
+set -g @teammate_layout "tiled"
+set-hook -g after-split-window 'run-shell -b "~/.config/tmux/scripts/teammate-mover.sh #{pane_id} #{socket_path}"'
+
 # --- behaviour -------------------------------------------------------------
 set -g mode-keys vi            # vi-style copy mode (h/j/k/l, v, y, /)
 set -g base-index 1            # windows number from 1
